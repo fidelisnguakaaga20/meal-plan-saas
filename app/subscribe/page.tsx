@@ -19,11 +19,7 @@ async function subscribeToPlan(params: {
   const response = await fetch("/api/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-      planType, 
-      userId, 
-      email 
-    }),
+    body: JSON.stringify({ planType, userId, email }),
   });
 
   if (!response.ok) {
@@ -56,7 +52,7 @@ export default function Subscribe() {
     onSuccess: (data) => {
       window.location.href = data.url;
     },
-    onError: (_error) => {
+    onError: () => {
       toast.error("Something went wrong");
     },
   });
