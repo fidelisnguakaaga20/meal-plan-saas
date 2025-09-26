@@ -83,10 +83,10 @@ export async function POST(req: NextRequest) {
     // 3) Map plan -> price id via env
     const priceId =
       planType === "week"
-        ? process.env.STRIPE_PRICE_WEEK
+        ? process.env.STRIPE_PRICE_WEEKLY
         : planType === "month"
-        ? process.env.STRIPE_PRICE_MONTH
-        : process.env.STRIPE_PRICE_YEAR;
+        ? process.env.STRIPE_PRICE_MONTHLY
+        : process.env.STRIPE_PRICE_YEARLY;
 
     if (!priceId) {
       return NextResponse.json(
