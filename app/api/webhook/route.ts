@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
         break;
       }
       default:
-        // ignore others
         break;
     }
   } catch (err: any) {
@@ -96,13 +95,13 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
   try {
     await prisma.profile.update({
-      where: { userId },
-      data: {
-        stripeSubscriptionId: subscriptionId,
-        subscriptionActive: true,
-        subscriptionTier: (tier as any) || null,
-      },
-    });
+    where: { userId },
+    data: {
+      stripeSubscriptionId: subscriptionId,
+      subscriptionActive: true,
+      subscriptionTier: (tier as any) || null,
+    },
+  });
   } catch (err: any) {
     console.log(err.message);
   }
@@ -115,7 +114,6 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
   const tier = tierFromPrice(priceId);
   const isActive = subscription.status === "active" || subscription.status === "trialing";
 
-  // find userId by subscriptionId
   let userId: string | undefined;
   try {
     const profile = await prisma.profile.findFirst({
@@ -137,7 +135,7 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
       where: { userId },
       data: {
         subscriptionActive: isActive,
-        subscriptionTier: (tier as any) || null, // auto-update plan on change
+        subscriptionTier: (tier as any) || null,
       },
     });
   } catch (err: any) {
@@ -146,8 +144,8 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  // TS expects an error here because some Stripe type versions omit `.subscription`
-  // @ts-expect-error
+  // TS in this Stripe version may omit `subscription` on Invoice; runtime has it
+  // @ts-expect-error Stripe types may omit .subscription on Invoice in this version
   const subId = (invoice.subscription as string | null) ?? null;
   if (!subId) return;
 

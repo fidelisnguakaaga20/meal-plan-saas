@@ -50,13 +50,18 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (err: any) {
-    console.error("Checkout error:", err);
-    // Bubble a useful 500 payload so you can see it in Network > Response
-    return NextResponse.json(
-      { error: err?.message ?? "Internal Server Error." },
-      { status: 500 }
-    );
-  }
+    
+  // } catch (err: any) {
+  //   console.error("Checkout error:", err);
+  //   // Bubble a useful 500 payload so you can see it in Network > Response
+  //   return NextResponse.json(
+  //     { error: err?.message ?? "Internal Server Error." },
+  //     { status: 500 }
+  //   );
+  // }
+  } catch (err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return NextResponse.json({ error: msg }, { status: 400 });
+}
 }
 
