@@ -146,8 +146,8 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  // Force TS to accept subscription field; logic unchanged
-  // @ts-ignore
+  // TS expects an error here because some Stripe type versions omit `.subscription`
+  // @ts-expect-error
   const subId = (invoice.subscription as string | null) ?? null;
   if (!subId) return;
 
