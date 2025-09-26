@@ -146,8 +146,9 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  // TS-safe cast; logic unchanged
-  const subId = ((invoice as any).subscription as string | null) ?? null;
+  // Force TS to accept subscription field; logic unchanged
+  // @ts-ignore
+  const subId = (invoice.subscription as string | null) ?? null;
   if (!subId) return;
 
   let userId: string | undefined;
