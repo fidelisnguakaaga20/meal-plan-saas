@@ -147,9 +147,15 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
   }
 }
 
+// async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+//   const subId = invoice.subscription as string | null;
+//   if (!subId) return;
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  const subId = invoice.subscription as string | null;
+  const subId = ((invoice as any).subscription as string | null) ?? null;
   if (!subId) return;
+  // ...rest stays same
+}
+
 
   let userId: string | undefined;
   try {
