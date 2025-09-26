@@ -8,7 +8,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { availablePlans } from "@/lib/plans";
 import { useState } from "react"
 import { useRouter } from "next/navigation";
-// import { useRouter } from "next/router";
 
 async function fetchSubscriptionStatus() {
   const res = await fetch("/api/profile/subscription-status");
@@ -56,7 +55,7 @@ export default function Profile() {
   });
 
   const {
-    data: updatedPlan,
+    data: _updatedPlan,
     mutate: updatePlanMutation,
     isPending: isUpdatePlanPending,
   } = useMutation({
@@ -72,7 +71,7 @@ export default function Profile() {
   });
 
   const {
-    data: canceledPlan,
+    data: _canceledPlan,
     mutate: unsubscribeMutation,
     isPending: isUnsubscribePending,
   } = useMutation({

@@ -77,7 +77,7 @@ export default function Subscribe() {
         <h2 className="text-3xl font-semibold">Pricing</h2>
         <p className="mt-2 text-gray-600">
           Get started on our weekly plan or upgrade to monthly or yearly when
-          you're ready.
+          you are ready.
         </p>
       </div>
 
