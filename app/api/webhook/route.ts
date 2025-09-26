@@ -13,7 +13,7 @@ const PRICE_WEEKLY = process.env.STRIPE_PRICE_WEEKLY;
 const PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY;
 const PRICE_YEARLY = process.env.STRIPE_PRICE_YEARLY;
 
-// /// helper: map priceId -> your app tier
+// helper: map priceId -> your app tier
 function tierFromPrice(priceId?: string | null): "WEEKLY" | "MONTHLY" | "YEARLY" | null {
   if (!priceId) return null;
   if (priceId === PRICE_WEEKLY) return "WEEKLY";
@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
         break;
       }
       case "customer.subscription.updated": {
-        // /// added: update tier when user changes plan in Billing Portal
         const subscription = event.data.object as Stripe.Subscription;
         await handleCustomerSubscriptionUpdated(subscription);
         break;
@@ -70,7 +69,6 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-  // uses your existing metadata key
   const userId = session.metadata?.clerkUserId;
   if (!userId) {
     console.log("No user id on session metadata");
@@ -83,7 +81,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     return;
   }
 
-  // /// derive tier from metadata first; if missing, derive from Subscription price
+  // derive tier from metadata first; if missing, derive from Subscription price
   let tier = (session.metadata?.planType as any) || null;
 
   if (!tier) {
@@ -139,7 +137,7 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
       where: { userId },
       data: {
         subscriptionActive: isActive,
-        subscriptionTier: (tier as any) || null, // /// auto-update plan on change
+        subscriptionTier: (tier as any) || null, // auto-update plan on change
       },
     });
   } catch (err: any) {
@@ -147,13 +145,10 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
   }
 }
 
-// async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-//   const subId = invoice.subscription as string | null;
-//   if (!subId) return;
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  // TS-safe cast; logic unchanged
   const subId = ((invoice as any).subscription as string | null) ?? null;
   if (!subId) return;
-
 
   let userId: string | undefined;
   try {
@@ -213,4 +208,3 @@ async function handleCustomerSubscriptionDeleted(subscription: Stripe.Subscripti
     console.log(err.message);
   }
 }
-
