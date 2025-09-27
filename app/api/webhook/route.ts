@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/api/webhook/route.ts
-
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { NextRequest, NextResponse } from "next/server";
@@ -13,12 +11,21 @@ const PRICE_WEEKLY = process.env.STRIPE_PRICE_WEEKLY;
 const PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY;
 const PRICE_YEARLY = process.env.STRIPE_PRICE_YEARLY;
 
-// helper: map priceId -> your app tier
-function tierFromPrice(priceId?: string | null): "WEEKLY" | "MONTHLY" | "YEARLY" | null {
+type Tier = "WEEKLY" | "MONTHLY" | "YEARLY" | null;
+
+function tierFromPrice(priceId?: string | null): Tier {
   if (!priceId) return null;
   if (priceId === PRICE_WEEKLY) return "WEEKLY";
   if (priceId === PRICE_MONTHLY) return "MONTHLY";
   if (priceId === PRICE_YEARLY) return "YEARLY";
+  return null;
+}
+
+function tierFromPlanKey(planKey?: string | null): Tier {
+  if (!planKey) return null;
+  if (planKey === "week") return "WEEKLY";
+  if (planKey === "month") return "MONTHLY";
+  if (planKey === "year") return "YEARLY";
   return null;
 }
 
@@ -28,7 +35,6 @@ export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
   let event: Stripe.Event;
-
   try {
     event = stripe.webhooks.constructEvent(body, signature || "", webhookSecret);
   } catch (err: any) {
@@ -68,7 +74,11 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
-  const userId = session.metadata?.clerkUserId;
+  // IMPORTANT: align with your checkout metadata
+  const userId =
+    (session.metadata?.userId as string | undefined) ??
+    (session.metadata?.clerkUserId as string | undefined);
+
   if (!userId) {
     console.log("No user id on session metadata");
     return;
@@ -80,12 +90,14 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     return;
   }
 
-  // derive tier from metadata first; if missing, derive from Subscription price
-  let tier = (session.metadata?.planType as any) || null;
+  // Prefer planType from metadata, fall back to price->tier
+  let tier: Tier = tierFromPlanKey(session.metadata?.planType ?? null);
 
   if (!tier) {
     try {
-      const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
+      const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["items.data.price"],
+      });
       const priceId = sub.items.data[0]?.price?.id ?? null;
       tier = tierFromPrice(priceId);
     } catch (e: any) {
@@ -95,13 +107,13 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 
   try {
     await prisma.profile.update({
-    where: { userId },
-    data: {
-      stripeSubscriptionId: subscriptionId,
-      subscriptionActive: true,
-      subscriptionTier: (tier as any) || null,
-    },
-  });
+      where: { userId },
+      data: {
+        stripeSubscriptionId: subscriptionId,
+        subscriptionActive: true,
+        subscriptionTier: tier,
+      },
+    });
   } catch (err: any) {
     console.log(err.message);
   }
@@ -135,7 +147,7 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
       where: { userId },
       data: {
         subscriptionActive: isActive,
-        subscriptionTier: (tier as any) || null,
+        subscriptionTier: tier,
       },
     });
   } catch (err: any) {
@@ -144,8 +156,8 @@ async function handleCustomerSubscriptionUpdated(subscription: Stripe.Subscripti
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-  // TS in this Stripe version may omit `subscription` on Invoice; runtime has it
-  // @ts-expect-error Stripe types may omit .subscription on Invoice in this version
+  // Stripe types changed; subscription is still present at runtime
+  // @ts-expect-error: Stripe types don't expose 'subscription' but it exists in payload
   const subId = (invoice.subscription as string | null) ?? null;
   if (!subId) return;
 

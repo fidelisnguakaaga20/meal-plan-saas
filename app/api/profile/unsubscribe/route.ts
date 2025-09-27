@@ -1,53 +1,72 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-import { currentUser } from "@clerk/nextjs/server";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function POST() {
   try {
-    const clerkUser = await currentUser();
-    if (!clerkUser?.id) {
+    const { userId } = await auth();
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // get user's profile
+    // Read from DB
     const profile = await prisma.profile.findUnique({
-      where: { userId: clerkUser.id },
+      where: { userId },
       select: { stripeSubscriptionId: true },
     });
 
-    if (!profile) {
-      return NextResponse.json({ error: "No Profile Found" }, { status: 404 });
+    let subId = profile?.stripeSubscriptionId ?? null;
+
+    // If DB doesn't have it (older sessions/webhook mismatch), try to find via Stripe customer email.
+    if (!subId) {
+      const u = await currentUser();
+      const email = u?.primaryEmailAddress?.emailAddress;
+      if (email) {
+        const customers = await stripe.customers.list({ email, limit: 1 });
+        const customer = customers.data[0];
+        if (customer) {
+          const subs = await stripe.subscriptions.list({
+            customer: customer.id,
+            status: "active",
+            limit: 1,
+          });
+          subId = subs.data[0]?.id ?? null;
+
+          // Optional: persist backfill so future actions are instant
+          if (subId) {
+            await prisma.profile.update({
+              where: { userId },
+              data: { stripeSubscriptionId: subId, subscriptionActive: true },
+            });
+          }
+        }
+      }
     }
 
-    if (!profile.stripeSubscriptionId) {
+    if (!subId) {
       return NextResponse.json({ error: "No Active Subscription Found" }, { status: 400 });
     }
 
-    const subscriptionId = profile.stripeSubscriptionId;
+    // Cancel immediately; change to { cancel_at_period_end: true } to end at period end.
+    await stripe.subscriptions.cancel(subId);
 
-    // (optional) retrieve if you need to inspect
-    // const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-
-    // cancel at period end (safer)
-    const canceledSubscription = await stripe.subscriptions.update(subscriptionId, {
-      cancel_at_period_end: true,
-    });
-
-    // reflect in DB
     await prisma.profile.update({
-      where: { userId: clerkUser.id },
+      where: { userId },
       data: {
-        subscriptionTier: null,
-        stripeSubscriptionId: null,
         subscriptionActive: false,
+        stripeSubscriptionId: null,
+        subscriptionTier: null,
       },
     });
 
-    return NextResponse.json({ subscription: canceledSubscription });
-  } catch (error: any) {
-    return NextResponse.json({ error: "Internal Error" }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 }
-
