@@ -1,97 +1,162 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openAI = new OpenAI({
-  apiKey: process.env.OPEN_ROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1",
+const OPENROUTER_KEY =
+  process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY;
+const BASE_URL =
+  process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+
+const openai = new OpenAI({
+  apiKey: OPENROUTER_KEY,
+  baseURL: BASE_URL,
+  defaultHeaders: {
+    "HTTP-Referer": process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000",
+    "X-Title": "MealPlan",
+  },
 });
+
+const DAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+function cleanToJson(text: string): string {
+  let t = (text ?? "").trim();
+  t = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  const first = t.indexOf("{");
+  const last = t.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) t = t.slice(first, last + 1);
+  t = t.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+  t = t.replace(/,(\s*[}\]])/g, "$1");
+  return t;
+}
+function coerceDays(obj: any, days = 7): Record<string, any> {
+  if (!obj || typeof obj !== "object") return {};
+  const result: Record<string, any> = {};
+  const hasAllNames = DAY_NAMES.every((d) => Object.prototype.hasOwnProperty.call(obj, d));
+  if (hasAllNames) {
+    for (const name of DAY_NAMES.slice(0, days)) result[name] = obj[name];
+    return result;
+  }
+  let i = 0;
+  for (const key of Object.keys(obj)) {
+    if (i >= days) break;
+    result[DAY_NAMES[i]] = obj[key];
+    i++;
+  }
+  return result;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { dietType, calories, allergies, cuisine, snacks, days } =
-      await request.json();
+    if (!OPENROUTER_KEY) {
+      return NextResponse.json(
+        { error: "Missing OPENROUTER_API_KEY / OPEN_ROUTER_API_KEY" },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      dietType = "Balanced",
+      calories = 2000,
+      allergies = "",
+      cuisine = "",
+      snacks = false,
+      days = 7,
+    } = body ?? {};
 
     const prompt = `
-You are a professional nutritionist. Create a ${days}-day meal plan for an individual following a ${dietType} diet aiming for ${calories} calories/day.
+You are a professional nutritionist.
 
-Allergies or restrictions: ${allergies || "none"}.
+Create a ${days}-day meal plan for a person following a "${dietType}" diet, targeting ${calories} calories/day.
+Allergies/restrictions: ${allergies || "none"}.
 Preferred cuisine: ${cuisine || "no preference"}.
-Snacks included: ${snacks ? "yes" : "no"}.
+Include snacks: ${snacks ? "yes" : "no"}.
 
-For each day, provide:
-- Breakfast
-- Lunch
-- Dinner
-${snacks ? "- Snacks" : ""}
+Return a STRICT JSON object (no markdown, no comments, no prose) with exactly these keys:
+${DAY_NAMES.slice(0, days).map((d) => `- "${d}"`).join("\n")}
 
-Use simple ingredients and provide brief instructions. Include approximate calorie counts for each meal.
+Each day must contain (string values):
+- "Breakfast"
+- "Lunch"
+- "Dinner"
+${snacks ? `- "Snacks"` : ""}
 
-Structure the response as a JSON object where each day is a key, and each meal (breakfast, lunch, dinner, snacks) is a sub-key. Example:
-
+Example for one day ONLY (do not include this example in your final output):
 {
   "Monday": {
-    "Breakfast": "Oatmeal with fruits - 350 calories",
-    "Lunch": "Grilled chicken salad - 500 calories",
-    "Dinner": "Steamed vegetables with quinoa - 600 calories",
-    "Snacks": "Greek yogurt - 150 calories"
-  },
-  "Tuesday": {
-    "Breakfast": "Smoothie bowl - 300 calories",
-    "Lunch": "Turkey sandwich - 450 calories",
-    "Dinner": "Baked salmon with asparagus - 700 calories",
-    "Snacks": "Almonds - 200 calories"
-  }
-  // ...and so on for each day
-}
-
-Return just the json with no extra commentaries and no backticks.
-`;
-
-const response = await openAI.chat.completions.create({
-    model: "meta-llama/llama-3.2-3b-instruct:free",
-    messages: [
-        {
-            role: "user",
-            content: prompt
-        },
-    ],
-
-    temperature: 0.7,
-    max_tokens: 1500,
-});
-
-const aiContent = response.choices[0].message.content!.trim();
-
-let parsedMealPlan: {[daily: string]: DailyMealPlan };
-
-try {
-    parsedMealPlan = JSON.parse(aiContent);
-} catch (parseError) {
-    console.error("Error parsing  ai response: ", parseError);
-    return NextResponse.json( 
-        { error: "Failed to parse meal PlanDetailsButton, please try again. " },
-        { status: 500 }
-    );
-}
-
-if (typeof parsedMealPlan !== "object" || parsedMealPlan === null) {
-    return NextResponse.json( 
-        { error: "Failed to parse meal PlanDetailsButton, please try again. " },
-        { status: 500 }
-    );
-}
-
-return NextResponse.json({ mealPlan: parsedMealPlan });
-
-  } catch (error: any) {
-    return NextResponse.json({ error: "Internal Error." }, { status: 500 });
+    "Breakfast": "Oatmeal with banana - 350 calories",
+    "Lunch": "Quinoa salad with chickpeas - 500 calories",
+    "Dinner": "Tofu stir-fry with vegetables - 600 calories"${snacks ? `,
+    "Snacks": "Apple with peanut butter - 200 calories"` : ""}
   }
 }
 
-interface DailyMealPlan {
-    Breakfast?: string;
-    Lunch?: string;
-    Dinner?: string;
-    Snacks?: string;
+Now produce JSON for ${days} days using the requested keys. Output ONLY valid JSON, no code fences.
+`.trim();
+
+    const modelCandidates = [
+      "google/gemma-2-9b-it:free",
+      "mistralai/mistral-7b-instruct:free",
+      "qwen/qwen2.5-7b-instruct:free",
+      "meta-llama/llama-3.1-8b-instruct:free",
+    ];
+
+    let completion: OpenAI.Chat.Completions.ChatCompletion | null = null;
+    let lastErr: any = null;
+
+    for (const model of modelCandidates) {
+      try {
+        completion = await openai.chat.completions.create({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 1400,
+          response_format: { type: "json_object" },
+        });
+        break;
+      } catch (e: any) {
+        lastErr = e;
+      }
+    }
+
+    if (!completion) {
+      console.error("All model candidates failed:", lastErr);
+      return NextResponse.json(
+        { error: "All free model endpoints are unavailable. Try again later or add a paid model." },
+        { status: 502 }
+      );
+    }
+
+    const raw = completion.choices?.[0]?.message?.content ?? "";
+    const text = cleanToJson(raw);
+
+    let mealPlanObj: any;
+    try {
+      mealPlanObj = JSON.parse(text);
+    } catch (err) {
+      console.error("JSON parse failed. Raw model output:", raw);
+      return NextResponse.json(
+        { error: "Model returned non-JSON. Please try again." },
+        { status: 502 }
+      );
+    }
+
+    const normalized = coerceDays(mealPlanObj, days);
+    return NextResponse.json({ mealPlan: normalized });
+  } catch (err: any) {
+    console.error("generate-mealplan error:", err?.response ?? err);
+    const msg = err?.response?.data?.error || err?.message || "Internal Error.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
-import { stripe } from "@/lib/stripe";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+import { NextResponse } from "next/server";
+import { auth, currentUser } from "@clerk/nextjs/server"; // <-- add currentUser
+import { prisma } from "@/lib/prisma";
+import { stripe } from "@/lib/stripe";
 
 const PRICE_WEEKLY = process.env.STRIPE_PRICE_WEEKLY;
 const PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY;
