@@ -18,7 +18,6 @@ interface DailyMealPlan {
   Dinner?: string;
   Snacks?: string;
 }
-
 type WeeklyMealPlan = Record<string, DailyMealPlan>;
 
 interface MealPlanResponse {
@@ -32,16 +31,21 @@ async function generateMealPlan(payload: MealPlanInput) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return res.json() as Promise<MealPlanResponse>;
+  const json = (await res.json()) as MealPlanResponse;
+  if (!res.ok) {
+    throw new Error(json.error || "Request failed");
+  }
+  return json;
 }
 
 export default function MealPlanDashboard() {
-  const { mutate, isPending, data, isSuccess } = useMutation<
+  const { mutate, isPending, data, isSuccess, isError, error } = useMutation<
     MealPlanResponse,
     Error,
     MealPlanInput
   >({
     mutationFn: generateMealPlan,
+    retry: false,
   });
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -80,7 +84,9 @@ export default function MealPlanDashboard() {
       <div className="w-full max-w-6xl flex flex-col md:flex-row bg-white shadow-lg rounded-lg overflow-hidden">
         {/* Left panel (form) */}
         <div className="w-full md:w-1/3 lg:w-1/4 p-6 bg-emerald-500 text-white">
-          <h1 className="text-2xl font-bold mb-6 text-center">AI Meal Plan Generator</h1>
+          <h1 className="text-2xl font-bold mb-6 text-center">
+            AI Meal Plan Generator
+          </h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -143,9 +149,7 @@ export default function MealPlanDashboard() {
 
             <div className="flex items-center gap-2">
               <input type="checkbox" id="snacks" name="snacks" className="h-4 w-4" />
-              <label htmlFor="snacks" className="text-sm">
-                Include Snacks
-              </label>
+              <label htmlFor="snacks" className="text-sm">Include Snacks</label>
             </div>
 
             <button
@@ -155,6 +159,12 @@ export default function MealPlanDashboard() {
             >
               {isPending ? "Generating..." : "Generate Meal Plan"}
             </button>
+
+            {isError && (
+              <p className="text-red-100 bg-red-600/60 rounded px-3 py-2 mt-2">
+                {error?.message || "Something went wrong."}
+              </p>
+            )}
           </form>
         </div>
 
@@ -165,30 +175,22 @@ export default function MealPlanDashboard() {
           {isSuccess && data?.mealPlan ? (
             <div className="h-[680px] overflow-y-auto">
               <div className="space-y-6">
-                {daysOfTheWeek.map((day, key) => {
+                {daysOfTheWeek.map((day) => {
                   const mealPlan = getMealPlanForDay(day);
                   return (
                     <div
-                      key={key}
+                      key={day}
                       className="bg-white shadow-md rounded-lg p-4 border border-emerald-200"
                     >
                       <h3 className="text-xl font-semibold mb-2 text-emerald-600">{day}</h3>
 
                       {mealPlan ? (
                         <div className="space-y-2">
-                          <div>
-                            <strong>Breakfast:</strong> {mealPlan.Breakfast ?? ""}
-                          </div>
-                          <div>
-                            <strong>Lunch:</strong> {mealPlan.Lunch ?? ""}
-                          </div>
-                          <div>
-                            <strong>Dinner:</strong> {mealPlan.Dinner ?? ""}
-                          </div>
+                          <div><strong>Breakfast:</strong> {mealPlan.Breakfast ?? ""}</div>
+                          <div><strong>Lunch:</strong> {mealPlan.Lunch ?? ""}</div>
+                          <div><strong>Dinner:</strong> {mealPlan.Dinner ?? ""}</div>
                           {mealPlan.Snacks && (
-                            <div>
-                              <strong>Snacks:</strong> {mealPlan.Snacks}
-                            </div>
+                            <div><strong>Snacks:</strong> {mealPlan.Snacks}</div>
                           )}
                         </div>
                       ) : (
@@ -204,7 +206,11 @@ export default function MealPlanDashboard() {
               <Spinner />
             </div>
           ) : (
-            <p className="text-gray-600">Please generate a meal plan to see it here.</p>
+            <p className="text-gray-600">
+              {data?.error
+                ? `Error: ${data.error}`
+                : "Please generate a meal plan to see it here."}
+            </p>
           )}
         </div>
       </div>

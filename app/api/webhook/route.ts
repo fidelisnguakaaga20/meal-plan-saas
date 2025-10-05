@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 const PRICE_WEEKLY = process.env.STRIPE_PRICE_WEEKLY;
 const PRICE_MONTHLY = process.env.STRIPE_PRICE_MONTHLY;

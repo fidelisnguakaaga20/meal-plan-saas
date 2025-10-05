@@ -1,50 +1,60 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
-const isPublicRoute = createRouteMatcher([ 
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+
+const isPublicRoute = createRouteMatcher([
   "/",
+  "/favicon.ico",
   "/sign-up(.*)",
   "/subscribe(.*)",
-  "/api/webhook(.*)",
-  "/api/check-subscription(.*)",
+  // public APIs that should never require auth
+  "/api/generate-mealplan(.*)",
+  "/api/db-health(.*)",
+  "/api/check-openai(.*)",
+  // (if you still have it) "/api/check-subscription(.*)",
 ]);
-const isSignUpRoute = createRouteMatcher(["/sign-up(.*)",]);
 
-const isMealPlanRoute = createRouteMatcher(["/mealplan(.*)",]);
+const isMealPlanRoute = createRouteMatcher(["/mealplan(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const userAuth = await auth();
-  const { userId } = userAuth;
-  const { pathname, origin} = req.nextUrl;
+  const url = req.nextUrl;
 
-  if (pathname === "/api/check-subscription") {
+  // Let Clerk handshake pass without any redirects
+  if (url.searchParams.has("__clerk_handshake")) {
     return NextResponse.next();
   }
+
+  const { userId } = await auth();
+
+  // If not signed in and route is not public => go to sign-up
   if (!isPublicRoute(req) && !userId) {
-    return NextResponse.redirect(new URL("/sign-up", origin));
+    return NextResponse.redirect(new URL("/sign-up", url.origin));
   }
 
-  if (isSignUpRoute(req) && userId) {
-     return NextResponse.redirect(new URL("/mealplan", origin));
-  }
-  if (isMealPlanRoute(req) && userId) {
-    try {
-      const response = await fetch(
-        `${origin}/api/check-subscription?userId=${userId}`
-      );
-      const data = await response.json();
-      if (!data.subscriptionActive) {
-        return NextResponse.redirect(new URL("/subscribe", origin));
-      }
-    } catch (error: any) {
-      return NextResponse.redirect(new URL("/subscribe", origin));
-      }
+  // Only protect /mealplan with subscription check
+  if (isMealPlanRoute(req)) {
+    if (!userId) {
+      return NextResponse.redirect(new URL("/sign-up", url.origin));
     }
+    try {
+      const resp = await fetch(`${url.origin}/api/check-subscription?userId=${userId}`, {
+        headers: { "x-mw": "1" },
+      });
+      const data = await resp.json();
+      if (!data?.subscriptionActive) {
+        return NextResponse.redirect(new URL("/subscribe", url.origin));
+      }
+    } catch {
+      return NextResponse.redirect(new URL("/subscribe", url.origin));
+    }
+  }
+
   return NextResponse.next();
 });
+
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
+    // Skip Next internals & static files
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     // Always run for API routes
     '/(api|trpc)(.*)',
