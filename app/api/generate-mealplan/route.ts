@@ -5,9 +5,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const DAY_NAMES = [
-  "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday",
-];
+const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
 function cleanToJson(text: string): string {
   let t = (text ?? "").trim();
@@ -19,12 +17,11 @@ function cleanToJson(text: string): string {
   t = t.replace(/,(\s*[}\]])/g, "$1");
   return t;
 }
-
 function coerceDays(obj: any, days = 7): Record<string, any> {
   if (!obj || typeof obj !== "object") return {};
   const result: Record<string, any> = {};
-  const hasAll = DAY_NAMES.every((d) => Object.prototype.hasOwnProperty.call(obj, d));
-  if (hasAll) {
+  const hasAllNames = DAY_NAMES.every((d) => Object.prototype.hasOwnProperty.call(obj, d));
+  if (hasAllNames) {
     for (const name of DAY_NAMES.slice(0, days)) result[name] = obj[name];
     return result;
   }
@@ -39,32 +36,15 @@ function coerceDays(obj: any, days = 7): Record<string, any> {
 
 export async function POST(request: NextRequest) {
   try {
-    // Read env *inside* the handler so build never crashes
-    const OPENROUTER_KEY =
-      process.env.OPENROUTER_API_KEY ||
-      process.env.OPENAI_API_KEY || // fallback if only OPENAI_API_KEY is present
-      null;
-
-    const BASE_URL =
-      process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-
-    if (!OPENROUTER_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: "Server is missing OPENROUTER_API_KEY / OPENAI_API_KEY" },
+        { error: "Missing OPENAI_API_KEY in environment." },
         { status: 500 }
       );
     }
 
-    const openai = new OpenAI({
-      apiKey: OPENROUTER_KEY,
-      baseURL: BASE_URL,
-      defaultHeaders: {
-        "HTTP-Referer": process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000",
-        "X-Title": "MealPlan",
-      },
-    });
-
-    const body = await request.json().catch(() => ({}));
+    const body = await request.json();
     const {
       dietType = "Balanced",
       calories = 2000,
@@ -104,45 +84,22 @@ Example for one day ONLY (do not include this example in your final output):
 Now produce JSON for ${days} days using the requested keys. Output ONLY valid JSON, no code fences.
 `.trim();
 
-    const models = [
-      "google/gemma-2-9b-it:free",
-      "mistralai/mistral-7b-instruct:free",
-      "qwen/qwen2.5-7b-instruct:free",
-      "meta-llama/llama-3.1-8b-instruct:free",
-    ];
+    const openai = new OpenAI({ apiKey });
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 1400,
+      response_format: { type: "json_object" },
+    });
 
-    let raw = "";
-    let lastErr: any = null;
-
-    for (const model of models) {
-      try {
-        const completion = await openai.chat.completions.create({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0.7,
-          max_tokens: 1400,
-          response_format: { type: "json_object" },
-        });
-        raw = completion.choices?.[0]?.message?.content ?? "";
-        if (raw) break;
-      } catch (e) { lastErr = e; }
-    }
-
-    if (!raw) {
-      console.error("All model candidates failed:", lastErr);
-      return NextResponse.json(
-        { error: "All free model endpoints are unavailable. Try again later or add a paid model." },
-        { status: 502 }
-      );
-    }
-
+    const raw = completion.choices?.[0]?.message?.content ?? "";
     const text = cleanToJson(raw);
 
     let mealPlanObj: any;
     try {
       mealPlanObj = JSON.parse(text);
-    } catch (err) {
-      console.error("JSON parse failed. Raw model output:", raw);
+    } catch {
       return NextResponse.json(
         { error: "Model returned non-JSON. Please try again." },
         { status: 502 }
