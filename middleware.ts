@@ -10,7 +10,7 @@ const isPublicRoute = createRouteMatcher([
   // public APIs that should never require auth
   "/api/generate-mealplan(.*)",
   "/api/db-health(.*)",
-  "/api/check-openai(.*)",
+  "/api/check-openrouter(.*)",
   // (if you still have it) "/api/check-subscription(.*)",
 ]);
 

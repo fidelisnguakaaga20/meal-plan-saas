@@ -3,7 +3,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 
 const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
@@ -36,15 +35,18 @@ function coerceDays(obj: any, days = 7): Record<string, any> {
 
 export async function POST(request: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY in environment." },
+        { error: "Missing OPENROUTER_API_KEY in environment." },
         { status: 500 }
       );
     }
 
-    const body = await request.json();
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const model = process.env.OPENROUTER_MODEL || "openrouter/openai/gpt-4o-mini";
+
+    const body = await request.json().catch(() => ({}));
     const {
       dietType = "Balanced",
       calories = 2000,
@@ -84,16 +86,35 @@ Example for one day ONLY (do not include this example in your final output):
 Now produce JSON for ${days} days using the requested keys. Output ONLY valid JSON, no code fences.
 `.trim();
 
-    const openai = new OpenAI({ apiKey });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-      max_tokens: 1400,
-      response_format: { type: "json_object" },
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        // recommended by OpenRouter:
+        "HTTP-Referer": baseUrl,
+        "X-Title": "MealPlan",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        max_tokens: 1400,
+        // works with OpenAI-compatible models on OpenRouter
+        response_format: { type: "json_object" },
+      }),
     });
 
-    const raw = completion.choices?.[0]?.message?.content ?? "";
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return NextResponse.json(
+        { error: `OpenRouter error ${res.status}: ${errText || res.statusText}` },
+        { status: 502 }
+      );
+    }
+
+    const data = await res.json();
+    const raw = data?.choices?.[0]?.message?.content ?? "";
     const text = cleanToJson(raw);
 
     let mealPlanObj: any;
@@ -110,7 +131,7 @@ Now produce JSON for ${days} days using the requested keys. Output ONLY valid JS
     return NextResponse.json({ mealPlan: normalized });
   } catch (err: any) {
     console.error("generate-mealplan error:", err?.response ?? err);
-    const msg = err?.response?.data?.error || err?.message || "Internal Error.";
+    const msg = err?.message || "Internal Error.";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
