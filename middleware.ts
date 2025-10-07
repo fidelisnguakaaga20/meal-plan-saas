@@ -5,13 +5,13 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher([
   "/",
   "/favicon.ico",
+  "/sign-in(.*)",        // ✅ add this
   "/sign-up(.*)",
   "/subscribe(.*)",
-  // public APIs that should never require auth
+  // public APIs
   "/api/generate-mealplan(.*)",
   "/api/db-health(.*)",
-  "/api/check-openrouter(.*)",
-  // (if you still have it) "/api/check-subscription(.*)",
+  "/api/check-openai(.*)",
 ]);
 
 const isMealPlanRoute = createRouteMatcher(["/mealplan(.*)"]);
@@ -19,7 +19,7 @@ const isMealPlanRoute = createRouteMatcher(["/mealplan(.*)"]);
 export default clerkMiddleware(async (auth, req) => {
   const url = req.nextUrl;
 
-  // Let Clerk handshake pass without any redirects
+  // Let Clerk handshake pass
   if (url.searchParams.has("__clerk_handshake")) {
     return NextResponse.next();
   }
