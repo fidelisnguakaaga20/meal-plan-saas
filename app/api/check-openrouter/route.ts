@@ -1,15 +1,11 @@
-/* Simple env check */
-import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
 
 export async function GET() {
-  const hasOpenrouter = Boolean(process.env.OPENROUTER_API_KEY);
-  const hasOpenai = Boolean(process.env.OPENAI_API_KEY);
-  const hasAny = hasOpenrouter || hasOpenai;
+  const has = !!process.env.OPENROUTER_API_KEY;
   return NextResponse.json({
-    hasKey: hasAny,
-    hasOpenrouter,
-    hasOpenai,
+    ok: has,
+    model: process.env.OPENROUTER_MODEL || "openrouter/openai/gpt-4o-mini",
   });
 }
