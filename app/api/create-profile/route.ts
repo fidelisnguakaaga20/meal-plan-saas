@@ -2,47 +2,38 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
 /**
- * Creates the user's profile record if missing.
- * Idempotent: safe to call multiple times.
- * Always returns 200 on success with a clear payload.
+ * Idempotent profile creation: ensures a Profile row exists for the signed-in user.
+ * No-op if it already exists. Returns 200 with a stable payload.
  */
-export async function POST(_req: NextRequest) {
+export async function POST() {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Pull safe defaults from Clerk
+    // Pull email from Clerk (optional fallback)
     const u = await currentUser();
     const email =
       u?.primaryEmailAddress?.emailAddress ??
       u?.emailAddresses?.[0]?.emailAddress ??
       null;
 
-    const firstName = (u?.firstName ?? "").trim();
-    const lastName = (u?.lastName ?? "").trim();
-    const name =
-      (firstName || lastName ? `${firstName} ${lastName}`.trim() : u?.username) ??
-      "Anonymous";
-
-    // Ensure row exists; keep idempotent
+    // Ensure row exists; keep idempotent and DO NOT use non-existent fields (e.g., name)
     const profile = await prisma.profile.upsert({
       where: { userId },
       update: {
         // don’t overwrite subscription fields here
         email: email ?? undefined,
-        name,
       },
       create: {
         userId,
         email: email ?? "",
-        name,
         subscriptionActive: false,
         subscriptionTier: null,
         stripeSubscriptionId: null,
@@ -50,7 +41,6 @@ export async function POST(_req: NextRequest) {
       select: {
         userId: true,
         email: true,
-        name: true,
         subscriptionActive: true,
         subscriptionTier: true,
         stripeSubscriptionId: true,
@@ -59,7 +49,6 @@ export async function POST(_req: NextRequest) {
 
     return NextResponse.json({ ok: true, profile }, { status: 200 });
   } catch (err: any) {
-    // Return 200 with context to keep client UX smooth
     return NextResponse.json(
       { ok: false, warning: err?.message ?? "Internal error creating profile." },
       { status: 200 }
